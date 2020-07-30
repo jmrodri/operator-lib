@@ -17,6 +17,7 @@ package leader
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 
 	. "github.com/onsi/ginkgo"
@@ -63,20 +64,47 @@ var _ = Describe("Leader election", func() {
 				},
 			)
 		})
-		It("should return an error when POD_NAME is not set", func() {
-			os.Unsetenv("POD_NAME")
-			err := Become(context.TODO(), "leader-test")
-			Expect(err).ShouldNot(BeNil())
+		When("POD_NAME is not set", func() {
+			It("should return a required env POD_NAME error", func() {
+				os.Unsetenv("POD_NAME")
+				readNamespace = func() ([]byte, error) {
+					return []byte("testns"), nil
+				}
+				err := Become(context.TODO(), "leader-test")
+				Expect(err).ShouldNot(BeNil())
+				Expect(err.Error()).To(ContainSubstring("required env POD_NAME"))
+			})
 		})
-		It("should return an ErrNoNamespace", func() {
-			os.Setenv("POD_NAME", "leader-test")
-			readNamespace = func() ([]byte, error) {
-				return nil, os.ErrNotExist
-			}
-			err := Become(context.TODO(), "leader-test", WithClient(client))
-			Expect(err).ShouldNot(BeNil())
-			Expect(err).To(Equal(ErrNoNamespace))
-			Expect(errors.Is(err, ErrNoNamespace)).To(Equal(true))
+		When("ErrNotExist is returned while reading namespace", func() {
+			It("should return an ErrNoNamespace", func() {
+				os.Setenv("POD_NAME", "leader-test")
+				readNamespace = func() ([]byte, error) {
+					return nil, os.ErrNotExist
+				}
+				err := Become(context.TODO(), "leader-test", WithClient(client))
+				Expect(err).ShouldNot(BeNil())
+				Expect(err).To(Equal(ErrNoNamespace))
+				Expect(errors.Is(err, ErrNoNamespace)).To(Equal(true))
+			})
+		})
+		Context("using an invalid Option", func() {
+			It("should fail with an error", func() {
+				err := Become(context.TODO(), "leader-test", func(*Config) error {
+					return fmt.Errorf("better fail")
+				})
+				Expect(err).ShouldNot(BeNil())
+				Expect(err.Error()).To(Equal("better fail"))
+			})
+		})
+		When("client is nil and no client config found", func() {
+			It("should fail with an error", func() {
+				os.Setenv("KUBECONFIG", "/tmp/shouldnotexist")
+				err := Become(context.TODO(), "leader-test", func(c *Config) error {
+					c.Client = nil
+					return nil
+				})
+				Expect(err).ShouldNot(BeNil())
+			})
 		})
 		It("should not return an error", func() {
 			os.Setenv("POD_NAME", "leader-test")
