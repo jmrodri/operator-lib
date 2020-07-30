@@ -92,21 +92,25 @@ func Become(ctx context.Context, lockName string, opts ...Option) error {
 
 	for _, opt := range opts {
 		if err := opt(&config); err != nil {
+			fmt.Println("XXX options failed!")
 			return err
 		}
 	}
 
 	if err := config.setDefaults(); err != nil {
+		fmt.Println("XXX config.setDefaults failed!")
 		return err
 	}
 
 	ns, err := getOperatorNamespace()
 	if err != nil {
+		fmt.Println("XXX getOperatorNamespace failed!")
 		return err
 	}
 
 	owner, err := myOwnerRef(ctx, config.Client, ns)
 	if err != nil {
+		fmt.Println("XXX myownerref failed!")
 		return err
 	}
 
