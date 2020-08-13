@@ -96,15 +96,18 @@ func Become(ctx context.Context, lockName string, opts ...Option) error {
 		}
 	}
 
+	fmt.Println("XXX calling setdefaults")
 	if err := config.setDefaults(); err != nil {
 		return err
 	}
 
+	fmt.Println("XXX calling getnamespace")
 	ns, err := getOperatorNamespace()
 	if err != nil {
 		return err
 	}
 
+	fmt.Println("XXX calling myownerref")
 	owner, err := myOwnerRef(ctx, config.Client, ns)
 	if err != nil {
 		return err
@@ -113,7 +116,13 @@ func Become(ctx context.Context, lockName string, opts ...Option) error {
 	// check for existing lock from this pod, in case we got restarted
 	existing := &corev1.ConfigMap{}
 	key := crclient.ObjectKey{Namespace: ns, Name: lockName}
+	fmt.Println("XXX calling client get")
 	err = config.Client.Get(ctx, key, existing)
+	if err != nil {
+		fmt.Printf("XXX returned from client get: %s\n", err.Error())
+	} else {
+		fmt.Println("XXX returned from client get: nil")
+	}
 
 	switch {
 	case err == nil:
@@ -126,6 +135,7 @@ func Become(ctx context.Context, lockName string, opts ...Option) error {
 			log.Info("Found existing lock", "LockOwner", existingOwner.Name)
 		}
 	case apierrors.IsNotFound(err):
+		fmt.Println("XXX IS NOT FOUND")
 		log.Info("No pre-existing lock was found.")
 	default:
 		log.Error(err, "Unknown error trying to get ConfigMap")
@@ -149,9 +159,11 @@ func Become(ctx context.Context, lockName string, opts ...Option) error {
 			log.Info("Became the leader.")
 			return nil
 		case apierrors.IsAlreadyExists(err):
+			fmt.Println("XXX already exists")
 			// refresh the lock so we use current leader
 			key := crclient.ObjectKey{Namespace: ns, Name: lockName}
 			if err := config.Client.Get(ctx, key, existing); err != nil {
+				fmt.Println("XXX damn calling Get again")
 				log.Info("Leader lock configmap not found.")
 				continue // configmap got lost ... just wait a bit
 			}
@@ -187,11 +199,13 @@ func Become(ctx context.Context, lockName string, opts ...Option) error {
 
 			select {
 			case <-time.After(wait.Jitter(backoff, .2)):
+				fmt.Println("XXX jitter")
 				if backoff < maxBackoffInterval {
 					backoff *= 2
 				}
 				continue
 			case <-ctx.Done():
+				fmt.Println("XXX done")
 				return ctx.Err()
 			}
 		default:

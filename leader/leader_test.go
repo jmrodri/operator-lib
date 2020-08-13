@@ -87,6 +87,65 @@ var _ = Describe("Leader election", func() {
 			err := Become(context.TODO(), "leader-test", WithClient(client))
 			Expect(err).Should(BeNil())
 		})
+		It("should create a configmap if not found", func() {
+			os.Setenv("POD_NAME", "leader-test")
+			readNamespace = func() ([]byte, error) {
+				return []byte("testns"), nil
+			}
+			// use a different client for this test
+			client = fake.NewFakeClient(
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "leader-test",
+						Namespace: "testns",
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion: "v1",
+								Kind:       "Pod",
+								Name:       "leader-test",
+							},
+						},
+					},
+				})
+			err := Become(context.TODO(), "leader-test", WithClient(client))
+			Expect(err).Should(BeNil())
+
+			// verify ConfigMap was created
+			key := crclient.ObjectKey{Namespace: "testns", Name: "leader-test"}
+			existing := &corev1.ConfigMap{}
+			err = client.Get(context.TODO(), key, existing)
+			Expect(err).Should(BeNil())
+		})
+		It("configmap already exists", func() {
+			os.Setenv("POD_NAME", "leader-test")
+			readNamespace = func() ([]byte, error) {
+				return []byte("testns"), nil
+			}
+			// use a different client for this test
+			getclient := fake.NewFakeClient(
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "leader-test",
+						Namespace: "testns",
+						OwnerReferences: []metav1.OwnerReference{
+							{
+								APIVersion: "v1",
+								Kind:       "Pod",
+								Name:       "leader-test",
+							},
+						},
+					},
+				})
+			compclient := NewCompositeClient(getclient, client)
+			err := Become(context.TODO(), "leader-test", WithClient(compclient))
+			Expect(err).Should(BeNil())
+
+			// verify ConfigMap was created
+			// key := crclient.ObjectKey{Namespace: "testns", Name: "leader-test"}
+			// existing := &corev1.ConfigMap{}
+			// err = client.Get(context.TODO(), key, existing)
+			// Expect(err).Should(BeNil())
+		})
 	})
 	Describe("isPodEvicted", func() {
 		var (
