@@ -129,6 +129,7 @@ func Become(ctx context.Context, lockName string, opts ...Option) error {
 			log.Info("Found existing lock", "LockOwner", existingOwner.Name)
 		}
 	case apierrors.IsNotFound(err):
+		fmt.Println("XXX configmap is not found")
 		log.Info("No pre-existing lock was found.")
 	default:
 		log.Error(err, "Unknown error trying to get ConfigMap")
@@ -146,35 +147,46 @@ func Become(ctx context.Context, lockName string, opts ...Option) error {
 	// try to create a lock
 	backoff := time.Second
 	for {
+		fmt.Println("XXX going through loop again")
 		err := config.Client.Create(ctx, cm)
 		switch {
 		case err == nil:
+			fmt.Println("XXX became the leader")
 			log.Info("Became the leader.")
 			return nil
 		case apierrors.IsAlreadyExists(err):
+			fmt.Println("XXX case ISAlreadyExists")
 			// refresh the lock so we use current leader
 			key := crclient.ObjectKey{Namespace: ns, Name: lockName}
 			if err := config.Client.Get(ctx, key, existing); err != nil {
+				fmt.Println("XXX leader lock configmap not found")
 				log.Info("Leader lock configmap not found.")
 				continue // configmap got lost ... just wait a bit
 			}
 
+			fmt.Println("XXX calling existing.GetOwnerReferences")
 			existingOwners := existing.GetOwnerReferences()
 			switch {
 			case len(existingOwners) != 1:
+				fmt.Println("XXX multiple existingOwners")
 				log.Info("Leader lock configmap must have exactly one owner reference.", "ConfigMap", existing)
 			case existingOwners[0].Kind != "Pod":
+				fmt.Println("XXX existingOwner kind is not a Pod")
 				log.Info("Leader lock configmap owner reference must be a pod.", "OwnerReference", existingOwners[0])
 			default:
+				fmt.Println("XXX existingOwners default case")
 				leaderPod := &corev1.Pod{}
 				key = crclient.ObjectKey{Namespace: ns, Name: existingOwners[0].Name}
 				err = config.Client.Get(ctx, key, leaderPod)
 				switch {
 				case apierrors.IsNotFound(err):
+					fmt.Println("XXX pod not found")
 					log.Info("Leader pod has been deleted, waiting for garbage collection to remove the lock.")
 				case err != nil:
+					fmt.Printf("XXX getting pod returned an error: %v\n", err.Error())
 					return err
 				case isPodEvicted(*leaderPod) && leaderPod.GetDeletionTimestamp() == nil:
+					fmt.Println("XXX isPodEvicted and deletiontime")
 					log.Info("Operator pod with leader lock has been evicted.", "leader", leaderPod.Name)
 					log.Info("Deleting evicted leader.")
 					// Pod may not delete immediately, continue with backoff
@@ -192,20 +204,24 @@ func Become(ctx context.Context, lockName string, opts ...Option) error {
 					}
 
 				default:
+					fmt.Println("XXX default line 194")
 					log.Info("Not the leader. Waiting.")
 				}
 			}
 
 			select {
 			case <-time.After(wait.Jitter(backoff, .2)):
+				fmt.Println("XXX waiting")
 				if backoff < maxBackoffInterval {
 					backoff *= 2
 				}
 				continue
 			case <-ctx.Done():
+				fmt.Println("XXX DONE!")
 				return ctx.Err()
 			}
 		default:
+			fmt.Println("XXX unknown error creating configmap")
 			log.Error(err, "Unknown error creating ConfigMap")
 			return err
 		}
