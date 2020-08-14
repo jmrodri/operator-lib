@@ -63,5 +63,59 @@ var _ = Describe("ReactorClient", func() {
 			Expect(pod.Name).To(Equal("testpod"))
 		})
 	})
+	Describe("Create", func() {
+		var (
+			client  crclient.Client
+			reactor ReactorClient
+		)
+		BeforeEach(func() {
+			client = fake.NewFakeClient(
+			// &corev1.ConfigMap{
+			//     ObjectMeta: metav1.ObjectMeta{
+			//         Name:      "reactor-test",
+			//         Namespace: "reactorns",
+			//     },
+			// }
+			)
+
+			reactor = NewReactorClient(client)
+		})
+		It("should return an error if the reactor matches", func() {
+			reactor.PrependReactor("create", "configmaps", func(action testing.Action) (bool, runtime.Object, error) {
+				return true, &corev1.ConfigMap{}, fmt.Errorf("Create ConfigMap Failed")
+			})
+
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "reactor-test",
+					Namespace: "reactorns",
+				},
+			}
+
+			err := reactor.Create(context.TODO(), cm)
+			Expect(err).ShouldNot(BeNil())
+			Expect(err.Error()).Should(Equal("Create ConfigMap Failed"))
+		})
+		It("should create the object if the reactor does not match", func() {
+			reactor.PrependReactor("create", "pods", func(action testing.Action) (bool, runtime.Object, error) {
+				return true, &corev1.Pod{}, fmt.Errorf("Create Pod Failed")
+			})
+
+			cm := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "reactor-test",
+					Namespace: "reactorns",
+				},
+			}
+
+			resourceVersion := cm.GetResourceVersion()
+
+			err := reactor.Create(context.TODO(), cm)
+			Expect(err).Should(BeNil())
+			Expect(resourceVersion).ShouldNot(Equal(cm.GetResourceVersion()))
+
+			// fmt.Println("XXX AFTER resource version: " + cm.GetResourceVersion())
+		})
+	})
 
 })

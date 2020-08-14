@@ -7,10 +7,17 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/testing"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
+)
+
+const (
+	maxNameLength          = 63
+	randomLength           = 5
+	maxGeneratedNameLength = maxNameLength - randomLength
 )
 
 type ReactorClient struct {
@@ -23,7 +30,7 @@ func NewReactorClient(client crclient.Client) ReactorClient {
 }
 
 func (c ReactorClient) Get(ctx context.Context, key crclient.ObjectKey, obj runtime.Object) error {
-	fmt.Println("XXX Entered Get")
+	fmt.Println("YYY Entered Get")
 	fmt.Printf("Group: %v\n", obj.GetObjectKind().GroupVersionKind().Group)
 	fmt.Printf("Version: %v\n", obj.GetObjectKind().GroupVersionKind().Version)
 	fmt.Printf("Resource: %v\n", obj.GetObjectKind().GroupVersionKind().Kind)
@@ -39,17 +46,17 @@ func (c ReactorClient) Get(ctx context.Context, key crclient.ObjectKey, obj runt
 	//     Version:  "v1",
 	//     Resource: "pod",
 	// }
-	fmt.Printf("XXX resource: %v\n", resource)
+	fmt.Printf("YYY resource: %v\n", resource)
 
-	actionCopy := testing.NewGetAction(resource, key.Namespace, key.Name)
-	fmt.Printf("XXX action verb [%v]\n", actionCopy.GetVerb())
-	fmt.Printf("XXX action resource [%v]\n", actionCopy.GetResource().Resource)
-	for _, reactor := range c.ReactionChain {
-		if !reactor.Handles(actionCopy) {
-			fmt.Println("XXX reactor does NOT handle the action")
-			continue
-		}
-	}
+	// actionCopy := testing.NewGetAction(resource, key.Namespace, key.Name)
+	// fmt.Printf("YYY action verb [%v]\n", actionCopy.GetVerb())
+	// fmt.Printf("YYY action resource [%v]\n", actionCopy.GetResource().Resource)
+	// for _, reactor := range c.ReactionChain {
+	//     if !reactor.Handles(actionCopy) {
+	//         fmt.Println("YYY reactor does NOT handle the action")
+	//         continue
+	//     }
+	// }
 
 	clienterr := c.client.Get(ctx, key, obj)
 	if clienterr != nil {
@@ -60,8 +67,8 @@ func (c ReactorClient) Get(ctx context.Context, key crclient.ObjectKey, obj runt
 		fmt.Println(err.Error())
 		return err
 	}
-	fmt.Println("XXX deepcopy retobj")
-	fmt.Printf("XXX retobj: %v\n", retobj)
+	fmt.Println("YYY deepcopy retobj")
+	//fmt.Printf("YYY retobj: %v\n", retobj)
 	obj = retobj.DeepCopyObject()
 	return nil
 }
@@ -70,12 +77,36 @@ func (c ReactorClient) List(ctx context.Context, list runtime.Object, opts ...cr
 	return c.client.List(ctx, list, opts...)
 }
 
-// func (f *testing.Fake) Create(ctx context.Context, obj runtime.Object, opts ...crclient.CreateOption) error {
-//     return nil
-// }
-
 func (c ReactorClient) Create(ctx context.Context, obj runtime.Object, opts ...crclient.CreateOption) error {
-	return c.client.Create(ctx, obj, opts...)
+	resource, err := getGVRFromObject(obj, scheme.Scheme)
+	if err != nil {
+		return err
+	}
+
+	accessor, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	if accessor.GetName() == "" && accessor.GetGenerateName() != "" {
+		base := accessor.GetGenerateName()
+		if len(base) > maxGeneratedNameLength {
+			base = base[:maxGeneratedNameLength]
+		}
+		accessor.SetName(fmt.Sprintf("%s%s", base, utilrand.String(randomLength)))
+	}
+
+	retobj, err := c.Fake.Invokes(testing.NewCreateAction(resource, accessor.GetNamespace(), obj), obj)
+	if err != nil {
+		fmt.Printf("Invoke failed to create: %v\n", err.Error())
+		return err
+	}
+
+	if retobj == obj {
+		fmt.Println("YYY invoke returned the default object")
+		return c.client.Create(ctx, obj, opts...)
+	}
+	return nil
 }
 
 func (c ReactorClient) Delete(ctx context.Context, obj runtime.Object, opts ...crclient.DeleteOption) error {
