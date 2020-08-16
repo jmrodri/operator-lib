@@ -3,6 +3,7 @@ package test
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -38,25 +39,7 @@ func (c ReactorClient) Get(ctx context.Context, key crclient.ObjectKey, obj runt
 	if err != nil {
 		return err
 	}
-	// resource := schema.GroupVersionResource{
-	//     // Group:    obj.GetObjectKind().GroupVersionKind().Group,
-	//     // Version:  obj.GetObjectKind().GroupVersionKind().Version,
-	//     // Resource: obj.GetObjectKind().GroupVersionKind().Kind,
-	//     Group:    "",
-	//     Version:  "v1",
-	//     Resource: "pod",
-	// }
 	fmt.Printf("YYY resource: %v\n", resource)
-
-	// actionCopy := testing.NewGetAction(resource, key.Namespace, key.Name)
-	// fmt.Printf("YYY action verb [%v]\n", actionCopy.GetVerb())
-	// fmt.Printf("YYY action resource [%v]\n", actionCopy.GetResource().Resource)
-	// for _, reactor := range c.ReactionChain {
-	//     if !reactor.Handles(actionCopy) {
-	//         fmt.Println("YYY reactor does NOT handle the action")
-	//         continue
-	//     }
-	// }
 
 	retobj, err := c.Fake.Invokes(testing.NewGetAction(resource, key.Namespace, key.Name), obj)
 	if err != nil {
@@ -71,7 +54,34 @@ func (c ReactorClient) Get(ctx context.Context, key crclient.ObjectKey, obj runt
 }
 
 func (c ReactorClient) List(ctx context.Context, list runtime.Object, opts ...crclient.ListOption) error {
-	return c.client.List(ctx, list, opts...)
+	gvk, err := apiutil.GVKForObject(list, scheme.Scheme)
+	if err != nil {
+		return err
+	}
+
+	if !strings.HasSuffix(gvk.Kind, "List") {
+		return fmt.Errorf("non-list type %T (kind %q) passed as output", list, gvk)
+	}
+	// we need the non-list GVK, so chop off the "List" from the end of the kind
+	gvk.Kind = gvk.Kind[:len(gvk.Kind)-4]
+
+	resource, err := getGVRFromObject(list, scheme.Scheme)
+	if err != nil {
+		return err
+	}
+
+	listOpts := crclient.ListOptions{}
+	listOpts.ApplyOptions(opts)
+
+	retobj, err := c.Fake.Invokes(testing.NewListAction(resource, gvk,
+		listOpts.Namespace, *listOpts.AsListOptions()), list)
+	if err != nil {
+		return err
+	}
+	if retobj == list {
+		return c.client.List(ctx, list, opts...)
+	}
+	return nil
 }
 
 func (c ReactorClient) Create(ctx context.Context, obj runtime.Object, opts ...crclient.CreateOption) error {
@@ -115,14 +125,6 @@ func (c ReactorClient) Delete(ctx context.Context, obj runtime.Object, opts ...c
 	accessor, err := meta.Accessor(obj)
 	if err != nil {
 		return err
-	}
-
-	if accessor.GetName() == "" && accessor.GetGenerateName() != "" {
-		base := accessor.GetGenerateName()
-		if len(base) > maxGeneratedNameLength {
-			base = base[:maxGeneratedNameLength]
-		}
-		accessor.SetName(fmt.Sprintf("%s%s", base, utilrand.String(randomLength)))
 	}
 
 	retobj, err := c.Fake.Invokes(testing.NewDeleteAction(resource, accessor.GetNamespace(), accessor.GetName()), obj)

@@ -164,4 +164,49 @@ var _ = Describe("ReactorClient", func() {
 			Expect(apierrors.IsNotFound(err)).Should(BeTrue())
 		})
 	})
+	Describe("List", func() {
+		var (
+			client  crclient.Client
+			reactor ReactorClient
+		)
+		BeforeEach(func() {
+			client = fake.NewFakeClient(
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "reactor-test1",
+						Namespace: "reactorns",
+					},
+				},
+				&corev1.Pod{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "reactor-test2",
+						Namespace: "reactorns",
+					},
+				})
+			reactor = NewReactorClient(client)
+		})
+		It("should return an error if the reactor matches", func() {
+			reactor.PrependReactor("list", "podlists",
+				func(action testing.Action) (bool, runtime.Object, error) {
+					fmt.Printf("verb: %v; kind: %v\n", action.GetVerb(), action.GetResource())
+					return true, &corev1.Pod{}, fmt.Errorf("Error listing pods")
+				})
+
+			list := &corev1.PodList{}
+			err := reactor.List(context.TODO(), list)
+			Expect(err).ShouldNot(BeNil())
+			Expect(err.Error()).To(Equal("Error listing pods"))
+			Expect(list.Items).To(HaveLen(0))
+		})
+		It("should list the objects if the reactor does not match", func() {
+			reactor.PrependReactor("list", "configmaps",
+				func(action testing.Action) (bool, runtime.Object, error) {
+					return true, &corev1.ConfigMap{}, fmt.Errorf("Error listing configmaps")
+				})
+			list := &corev1.PodList{}
+			err := reactor.List(context.TODO(), list)
+			Expect(err).Should(BeNil())
+			Expect(list.Items).To(HaveLen(2))
+		})
+	})
 })
