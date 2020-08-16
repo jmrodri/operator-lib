@@ -58,18 +58,15 @@ func (c ReactorClient) Get(ctx context.Context, key crclient.ObjectKey, obj runt
 	//     }
 	// }
 
-	clienterr := c.client.Get(ctx, key, obj)
-	if clienterr != nil {
-
-	}
 	retobj, err := c.Fake.Invokes(testing.NewGetAction(resource, key.Namespace, key.Name), obj)
 	if err != nil {
 		fmt.Println(err.Error())
 		return err
 	}
-	fmt.Println("YYY deepcopy retobj")
-	//fmt.Printf("YYY retobj: %v\n", retobj)
-	obj = retobj.DeepCopyObject()
+	if retobj == obj {
+		fmt.Println("YYY invoke returned the default object")
+		return c.client.Get(ctx, key, obj)
+	}
 	return nil
 }
 
@@ -110,7 +107,34 @@ func (c ReactorClient) Create(ctx context.Context, obj runtime.Object, opts ...c
 }
 
 func (c ReactorClient) Delete(ctx context.Context, obj runtime.Object, opts ...crclient.DeleteOption) error {
-	return c.client.Delete(ctx, obj, opts...)
+	resource, err := getGVRFromObject(obj, scheme.Scheme)
+	if err != nil {
+		return err
+	}
+
+	accessor, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	if accessor.GetName() == "" && accessor.GetGenerateName() != "" {
+		base := accessor.GetGenerateName()
+		if len(base) > maxGeneratedNameLength {
+			base = base[:maxGeneratedNameLength]
+		}
+		accessor.SetName(fmt.Sprintf("%s%s", base, utilrand.String(randomLength)))
+	}
+
+	retobj, err := c.Fake.Invokes(testing.NewDeleteAction(resource, accessor.GetNamespace(), accessor.GetName()), obj)
+	if err != nil {
+		fmt.Printf("Invoke failed to delete: %v\n", err.Error())
+		return err
+	}
+	if retobj == obj {
+		fmt.Println("YYY invoke returned the default object")
+		return c.client.Delete(ctx, obj, opts...)
+	}
+	return nil
 }
 
 func (c ReactorClient) Update(ctx context.Context, obj runtime.Object, opts ...crclient.UpdateOption) error {
