@@ -198,6 +198,10 @@ var _ = Describe("Leader election", func() {
 				Expect(err).ShouldNot(BeNil())
 				Expect(err.Error()).To(Equal("random error"))
 			})
+			Context("but a configmap was created underneath us", func() {
+				It("ultimately become leader", func() {
+				})
+			})
 		})
 		// It("should return Unknown error trying to create ConfigMap lock", func() {
 		//     os.Setenv("POD_NAME", "leader-test")
