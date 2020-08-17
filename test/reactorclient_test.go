@@ -333,4 +333,18 @@ var _ = Describe("ReactorClient", func() {
 			Expect(obj.ObjectMeta.ResourceVersion).To(Equal("1"))
 		})
 	})
+	Describe("Status", func() {
+		var (
+			client  crclient.Client
+			reactor ReactorClient
+		)
+		BeforeEach(func() {
+			client = fake.NewFakeClient()
+			reactor = NewReactorClient(client)
+		})
+		It("should return a status writer", func() {
+			statusWriter := reactor.Status()
+			Expect(statusWriter).ShouldNot(BeNil())
+		})
+	})
 })
