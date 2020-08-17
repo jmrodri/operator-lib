@@ -2,6 +2,7 @@ package test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	. "github.com/onsi/ginkgo"
@@ -11,6 +12,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	testing "k8s.io/client-go/testing"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -188,7 +190,6 @@ var _ = Describe("ReactorClient", func() {
 		It("should return an error if the reactor matches", func() {
 			reactor.PrependReactor("list", "podlists",
 				func(action testing.Action) (bool, runtime.Object, error) {
-					fmt.Printf("verb: %v; kind: %v\n", action.GetVerb(), action.GetResource())
 					return true, &corev1.Pod{}, fmt.Errorf("Error listing pods")
 				})
 
@@ -227,7 +228,6 @@ var _ = Describe("ReactorClient", func() {
 		It("should return an error if the reactor matches", func() {
 			reactor.PrependReactor("update", "pods",
 				func(action testing.Action) (bool, runtime.Object, error) {
-					fmt.Printf("verb: %v; kind: %v\n", action.GetVerb(), action.GetResource())
 					return true, &corev1.Pod{}, fmt.Errorf("Error updating pods")
 				})
 
@@ -258,6 +258,79 @@ var _ = Describe("ReactorClient", func() {
 			key := crclient.ObjectKey{Namespace: "reactorns", Name: "reactor-test"}
 			err = reactor.Get(context.TODO(), key, cm)
 			Expect(len(cm.GetLabels())).To(Equal(1))
+		})
+	})
+	Describe("Update", func() {
+		var (
+			client  crclient.Client
+			reactor ReactorClient
+		)
+		BeforeEach(func() {
+			client = fake.NewFakeClient(
+				&corev1.ConfigMap{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "core/v1",
+						Kind:       "ConfigMap",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "reactor-test",
+						Namespace: "reactorns",
+					},
+				})
+			reactor = NewReactorClient(client)
+		})
+		It("should return an error if the reactor matches", func() {
+			reactor.PrependReactor("patch", "configmaps",
+				func(action testing.Action) (bool, runtime.Object, error) {
+					return true, &corev1.ConfigMap{}, fmt.Errorf("Error updating configmaps")
+				})
+
+			mergePatch, err := json.Marshal(map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"annotations": map[string]interface{}{
+						"foo": "bar",
+					},
+				},
+			})
+			Expect(err).Should(BeNil())
+
+			cm := &corev1.ConfigMap{}
+			err = reactor.Patch(context.TODO(), cm, crclient.RawPatch(types.StrategicMergePatchType, mergePatch))
+			Expect(err).ShouldNot(BeNil())
+			Expect(err.Error()).To(Equal("Error updating configmaps"))
+		})
+		It("should patch the object", func() {
+			reactor.PrependReactor("patch", "pods",
+				func(action testing.Action) (bool, runtime.Object, error) {
+					return true, &corev1.Pod{}, fmt.Errorf("Error updating pods")
+				})
+
+			mergePatch, err := json.Marshal(map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"annotations": map[string]interface{}{
+						"foo": "bar",
+					},
+				},
+			})
+			cm := &corev1.ConfigMap{
+				TypeMeta: metav1.TypeMeta{
+					APIVersion: "core/v1",
+					Kind:       "ConfigMap",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "reactor-test",
+					Namespace: "reactorns",
+				},
+			}
+			err = reactor.Patch(context.TODO(), cm, crclient.RawPatch(types.StrategicMergePatchType, mergePatch))
+			Expect(err).Should(BeNil())
+
+			obj := &corev1.ConfigMap{}
+			key := crclient.ObjectKey{Namespace: "reactorns", Name: "reactor-test"}
+			err = reactor.Get(context.TODO(), key, obj)
+			Expect(err).Should(BeNil())
+			Expect(obj.Annotations["foo"]).To(Equal("bar"))
+			Expect(obj.ObjectMeta.ResourceVersion).To(Equal("1"))
 		})
 	})
 })

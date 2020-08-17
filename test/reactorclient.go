@@ -150,7 +150,30 @@ func (c ReactorClient) Update(ctx context.Context, obj runtime.Object, opts ...c
 }
 
 func (c ReactorClient) Patch(ctx context.Context, obj runtime.Object, patch crclient.Patch, opts ...crclient.PatchOption) error {
-	return c.client.Patch(ctx, obj, patch, opts...)
+	resource, err := getGVRFromObject(obj, scheme.Scheme)
+	if err != nil {
+		return err
+	}
+
+	accessor, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	// NewPatchAction(resource schema.GroupVersionResource, namespace string, name string, pt types.PatchType, patch []byte)
+	data, err := patch.Data(obj)
+	if err != nil {
+		return err
+	}
+
+	retobj, err := c.Fake.Invokes(testing.NewPatchAction(resource, accessor.GetNamespace(), accessor.GetName(), patch.Type(), data), obj)
+	if err != nil {
+		return err
+	}
+	if retobj == obj {
+		return c.client.Patch(ctx, obj, patch, opts...)
+	}
+	return nil
 }
 
 func (c ReactorClient) DeleteAllOf(ctx context.Context, obj runtime.Object, opts ...crclient.DeleteAllOfOption) error {
