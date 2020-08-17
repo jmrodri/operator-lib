@@ -31,23 +31,16 @@ func NewReactorClient(client crclient.Client) ReactorClient {
 }
 
 func (c ReactorClient) Get(ctx context.Context, key crclient.ObjectKey, obj runtime.Object) error {
-	fmt.Println("YYY Entered Get")
-	fmt.Printf("Group: %v\n", obj.GetObjectKind().GroupVersionKind().Group)
-	fmt.Printf("Version: %v\n", obj.GetObjectKind().GroupVersionKind().Version)
-	fmt.Printf("Resource: %v\n", obj.GetObjectKind().GroupVersionKind().Kind)
 	resource, err := getGVRFromObject(obj, scheme.Scheme)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("YYY resource: %v\n", resource)
 
 	retobj, err := c.Fake.Invokes(testing.NewGetAction(resource, key.Namespace, key.Name), obj)
 	if err != nil {
-		fmt.Println(err.Error())
 		return err
 	}
 	if retobj == obj {
-		fmt.Println("YYY invoke returned the default object")
 		return c.client.Get(ctx, key, obj)
 	}
 	return nil
@@ -105,12 +98,10 @@ func (c ReactorClient) Create(ctx context.Context, obj runtime.Object, opts ...c
 
 	retobj, err := c.Fake.Invokes(testing.NewCreateAction(resource, accessor.GetNamespace(), obj), obj)
 	if err != nil {
-		fmt.Printf("Invoke failed to create: %v\n", err.Error())
 		return err
 	}
 
 	if retobj == obj {
-		fmt.Println("YYY invoke returned the default object")
 		return c.client.Create(ctx, obj, opts...)
 	}
 	return nil
@@ -129,18 +120,33 @@ func (c ReactorClient) Delete(ctx context.Context, obj runtime.Object, opts ...c
 
 	retobj, err := c.Fake.Invokes(testing.NewDeleteAction(resource, accessor.GetNamespace(), accessor.GetName()), obj)
 	if err != nil {
-		fmt.Printf("Invoke failed to delete: %v\n", err.Error())
 		return err
 	}
 	if retobj == obj {
-		fmt.Println("YYY invoke returned the default object")
 		return c.client.Delete(ctx, obj, opts...)
 	}
 	return nil
 }
 
 func (c ReactorClient) Update(ctx context.Context, obj runtime.Object, opts ...crclient.UpdateOption) error {
-	return c.client.Update(ctx, obj, opts...)
+	resource, err := getGVRFromObject(obj, scheme.Scheme)
+	if err != nil {
+		return err
+	}
+
+	accessor, err := meta.Accessor(obj)
+	if err != nil {
+		return err
+	}
+
+	retobj, err := c.Fake.Invokes(testing.NewUpdateAction(resource, accessor.GetNamespace(), obj), obj)
+	if err != nil {
+		return err
+	}
+	if retobj == obj {
+		return c.client.Update(ctx, obj, opts...)
+	}
+	return nil
 }
 
 func (c ReactorClient) Patch(ctx context.Context, obj runtime.Object, patch crclient.Patch, opts ...crclient.PatchOption) error {

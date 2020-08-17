@@ -209,4 +209,55 @@ var _ = Describe("ReactorClient", func() {
 			Expect(list.Items).To(HaveLen(2))
 		})
 	})
+	Describe("Update", func() {
+		var (
+			client  crclient.Client
+			reactor ReactorClient
+		)
+		BeforeEach(func() {
+			client = fake.NewFakeClient(
+				&corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "reactor-test",
+						Namespace: "reactorns",
+					},
+				})
+			reactor = NewReactorClient(client)
+		})
+		It("should return an error if the reactor matches", func() {
+			reactor.PrependReactor("update", "pods",
+				func(action testing.Action) (bool, runtime.Object, error) {
+					fmt.Printf("verb: %v; kind: %v\n", action.GetVerb(), action.GetResource())
+					return true, &corev1.Pod{}, fmt.Errorf("Error updating pods")
+				})
+
+			pod := &corev1.Pod{}
+			err := reactor.Update(context.TODO(), pod)
+			Expect(err).ShouldNot(BeNil())
+			Expect(err.Error()).To(Equal("Error updating pods"))
+		})
+		It("should update the object", func() {
+			reactor.PrependReactor("update", "pods",
+				func(action testing.Action) (bool, runtime.Object, error) {
+					return true, &corev1.Pod{}, fmt.Errorf("Should not see this")
+				})
+
+			cmupdate := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "reactor-test",
+					Namespace: "reactorns",
+					Labels:    map[string]string{"key": "value"},
+				},
+			}
+
+			err := reactor.Update(context.TODO(), cmupdate)
+			Expect(err).Should(BeNil())
+
+			// Ensure ConfigMap was updated
+			cm := &corev1.ConfigMap{}
+			key := crclient.ObjectKey{Namespace: "reactorns", Name: "reactor-test"}
+			err = reactor.Get(context.TODO(), key, cm)
+			Expect(len(cm.GetLabels())).To(Equal(1))
+		})
+	})
 })
