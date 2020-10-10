@@ -146,7 +146,7 @@ var _ = Describe("ReactorClient", func() {
 					Namespace: "reactorns",
 				},
 			}
-			reactor.Create(context.TODO(), p)
+			_ = reactor.Create(context.TODO(), p)
 
 			// add a delete reactor for configmaps; this should be ignored when
 			// trying to delete pods
@@ -256,7 +256,7 @@ var _ = Describe("ReactorClient", func() {
 			// Ensure ConfigMap was updated
 			cm := &corev1.ConfigMap{}
 			key := crclient.ObjectKey{Namespace: "reactorns", Name: "reactor-test"}
-			err = reactor.Get(context.TODO(), key, cm)
+			_ = reactor.Get(context.TODO(), key, cm)
 			Expect(len(cm.GetLabels())).To(Equal(1))
 		})
 	})
@@ -305,7 +305,7 @@ var _ = Describe("ReactorClient", func() {
 					return true, &corev1.Pod{}, fmt.Errorf("Error updating pods")
 				})
 
-			mergePatch, err := json.Marshal(map[string]interface{}{
+			mergePatch, _ := json.Marshal(map[string]interface{}{
 				"metadata": map[string]interface{}{
 					"annotations": map[string]interface{}{
 						"foo": "bar",
@@ -322,7 +322,7 @@ var _ = Describe("ReactorClient", func() {
 					Namespace: "reactorns",
 				},
 			}
-			err = reactor.Patch(context.TODO(), cm, crclient.RawPatch(types.StrategicMergePatchType, mergePatch))
+			err := reactor.Patch(context.TODO(), cm, crclient.RawPatch(types.StrategicMergePatchType, mergePatch))
 			Expect(err).Should(BeNil())
 
 			obj := &corev1.ConfigMap{}
