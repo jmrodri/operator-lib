@@ -24,8 +24,10 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/operator-framework/operator-lib/test"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/testing"
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -102,14 +104,6 @@ var _ = Describe("Leader election", func() {
 			Expect(err).ShouldNot(BeNil())
 			Expect(err.Error()).To(Equal("expected error"))
 		})
-		// It("should return an error when setDefaults fails", func() {
-		//     // call Become without a client should cause
-		//     // it to attempt to get a real client and fail
-		//     // since we're not running in a cluster
-		//     err := Become(context.TODO(), "leader-test")
-		//     Expect(err).ShouldNot(BeNil())
-		//     Expect(err.Error()).To(Equal("expected error"))
-		// })
 		It("should return ErrNoNamespace when namespace is not found", func() {
 			os.Setenv("POD_NAME", "leader-test")
 			readNamespace = func() ([]byte, error) {
@@ -203,82 +197,83 @@ var _ = Describe("Leader election", func() {
 				})
 			})
 		})
-		// It("should return Unknown error trying to create ConfigMap lock", func() {
-		//     os.Setenv("POD_NAME", "leader-test")
-		//     readNamespace = func() ([]byte, error) {
-		//         return []byte("testns"), nil
-		//     }
-		//     reactor.PrependReactor("get", "configmaps",
-		//         func(action testing.Action) (bool, runtime.Object, error) {
-		//             return true, &corev1.ConfigMap{}, apierrors.NewNotFound(
-		//                 schema.GroupResource{Group: "", Resource: "configmaps"},
-		//                 "reactor")
-		//         })
-		//     reactor.PrependReactor("create", "configmaps",
-		//         func(action testing.Action) (bool, runtime.Object, error) {
-		//             return true, &corev1.ConfigMap{}, fmt.Errorf("random error")
-		//         })
-		//     err := Become(context.TODO(), "leader-test", WithClient(reactor))
-		//     Expect(err).ShouldNot(BeNil())
-		//     Expect(err.Error()).To(Equal("random error"))
-		// })
-		// It("should handle when ConfigMap already exists and become leader", func() {
-		//     os.Setenv("POD_NAME", "leader-test")
-		//     readNamespace = func() ([]byte, error) {
-		//         return []byte("testns"), nil
-		//     }
-		//
-		//     getcount := 1
-		//     createcount := 1
-		//     reactor.PrependReactor("get", "configmaps",
-		//         func(action testing.Action) (bool, runtime.Object, error) {
-		//             getcount -= 1
-		//             if getcount < 0 {
-		//                 cm := &corev1.ConfigMap{
-		//                     ObjectMeta: metav1.ObjectMeta{
-		//                         Name:      "leader-test",
-		//                         Namespace: "testns",
-		//                         OwnerReferences: []metav1.OwnerReference{
-		//                             {
-		//                                 APIVersion: "v1",
-		//                                 Kind:       "Pod",
-		//                                 Name:       "leader-test",
-		//                             },
-		//                         },
-		//                     },
-		//                 }
-		//                 return true, cm, nil
-		//             }
-		//             return true, &corev1.ConfigMap{}, apierrors.NewNotFound(
-		//                 schema.GroupResource{Group: "", Resource: "configmaps"},
-		//                 "reactor")
-		//         })
-		//     reactor.PrependReactor("create", "configmaps",
-		//         func(action testing.Action) (bool, runtime.Object, error) {
-		//             createcount -= 1
-		//             if createcount < 0 {
-		//                 cm := &corev1.ConfigMap{
-		//                     ObjectMeta: metav1.ObjectMeta{
-		//                         Name:      "leader-test",
-		//                         Namespace: "testns",
-		//                         OwnerReferences: []metav1.OwnerReference{
-		//                             {
-		//                                 APIVersion: "v1",
-		//                                 Kind:       "Pod",
-		//                                 Name:       "leader-test",
-		//                             },
-		//                         },
-		//                     },
-		//                 }
-		//                 return true, cm, nil
-		//             }
-		//             return true, &corev1.ConfigMap{}, apierrors.NewAlreadyExists(
-		//                 schema.GroupResource{Group: "", Resource: "configmaps"},
-		//                 "reactor")
-		//         })
-		//     err := Become(context.TODO(), "leader-test", WithClient(reactor))
-		//     Expect(err).ShouldNot(BeNil())
-		// })
+		It("should return Unknown error trying to create ConfigMap lock", func() {
+			os.Setenv("POD_NAME", "leader-test")
+			readNamespace = func() ([]byte, error) {
+				return []byte("testns"), nil
+			}
+			reactor.PrependReactor("get", "configmaps",
+				func(action testing.Action) (bool, runtime.Object, error) {
+					return true, &corev1.ConfigMap{}, apierrors.NewNotFound(
+						schema.GroupResource{Group: "", Resource: "configmaps"},
+						"reactor")
+				})
+			reactor.PrependReactor("create", "configmaps",
+				func(action testing.Action) (bool, runtime.Object, error) {
+					return true, &corev1.ConfigMap{}, fmt.Errorf("random error")
+				})
+			err := Become(context.TODO(), "leader-test", WithClient(reactor))
+			Expect(err).ShouldNot(BeNil())
+			Expect(err.Error()).To(Equal("random error"))
+		})
+		It("should handle when ConfigMap already exists and become leader", func() {
+			Skip("needs a little more work with reactor client")
+			os.Setenv("POD_NAME", "leader-test")
+			readNamespace = func() ([]byte, error) {
+				return []byte("testns"), nil
+			}
+
+			getcount := 1
+			createcount := 1
+			reactor.PrependReactor("get", "configmaps",
+				func(action testing.Action) (bool, runtime.Object, error) {
+					getcount--
+					if getcount < 0 {
+						cm := &corev1.ConfigMap{
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "leader-test",
+								Namespace: "testns",
+								OwnerReferences: []metav1.OwnerReference{
+									{
+										APIVersion: "v1",
+										Kind:       "Pod",
+										Name:       "leader-test",
+									},
+								},
+							},
+						}
+						return true, cm, nil
+					}
+					return true, &corev1.ConfigMap{}, apierrors.NewNotFound(
+						schema.GroupResource{Group: "", Resource: "configmaps"},
+						"reactor")
+				})
+			reactor.PrependReactor("create", "configmaps",
+				func(action testing.Action) (bool, runtime.Object, error) {
+					createcount--
+					if createcount < 0 {
+						cm := &corev1.ConfigMap{
+							ObjectMeta: metav1.ObjectMeta{
+								Name:      "leader-test",
+								Namespace: "testns",
+								OwnerReferences: []metav1.OwnerReference{
+									{
+										APIVersion: "v1",
+										Kind:       "Pod",
+										Name:       "leader-test",
+									},
+								},
+							},
+						}
+						return true, cm, nil
+					}
+					return true, &corev1.ConfigMap{}, apierrors.NewAlreadyExists(
+						schema.GroupResource{Group: "", Resource: "configmaps"},
+						"reactor")
+				})
+			err := Become(context.TODO(), "leader-test", WithClient(reactor))
+			Expect(err).ShouldNot(BeNil())
+		})
 	})
 	Describe("isPodEvicted", func() {
 		var (
