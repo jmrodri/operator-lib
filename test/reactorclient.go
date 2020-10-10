@@ -21,15 +21,20 @@ const (
 	maxGeneratedNameLength = maxNameLength - randomLength
 )
 
+// ReactorClient knows how to perform CRUD operations on Kubernetes objects.
 type ReactorClient struct {
 	testing.Fake
 	client crclient.Client
 }
 
+// NewReactorClient creates a new ReactorClient.
 func NewReactorClient(client crclient.Client) ReactorClient {
 	return ReactorClient{client: client}
 }
 
+// Get retrieves an obj for the given object key from the Kubernetes Cluster.
+// obj must be a struct pointer so that obj can be updated with the response
+// returned by the Server.
 func (c ReactorClient) Get(ctx context.Context, key crclient.ObjectKey, obj runtime.Object) error {
 	resource, err := getGVRFromObject(obj, scheme.Scheme)
 	if err != nil {
@@ -46,6 +51,9 @@ func (c ReactorClient) Get(ctx context.Context, key crclient.ObjectKey, obj runt
 	return nil
 }
 
+// List retrieves list of objects for a given namespace and list options. On a
+// successful call, Items field in the list will be populated with the
+// result returned from the server.
 func (c ReactorClient) List(ctx context.Context, list runtime.Object, opts ...crclient.ListOption) error {
 	gvk, err := apiutil.GVKForObject(list, scheme.Scheme)
 	if err != nil {
@@ -77,6 +85,7 @@ func (c ReactorClient) List(ctx context.Context, list runtime.Object, opts ...cr
 	return nil
 }
 
+// Create saves the object obj in the Kubernetes cluster.
 func (c ReactorClient) Create(ctx context.Context, obj runtime.Object, opts ...crclient.CreateOption) error {
 	resource, err := getGVRFromObject(obj, scheme.Scheme)
 	if err != nil {
@@ -107,6 +116,7 @@ func (c ReactorClient) Create(ctx context.Context, obj runtime.Object, opts ...c
 	return nil
 }
 
+// Delete deletes the given obj from Kubernetes cluster.
 func (c ReactorClient) Delete(ctx context.Context, obj runtime.Object, opts ...crclient.DeleteOption) error {
 	resource, err := getGVRFromObject(obj, scheme.Scheme)
 	if err != nil {
@@ -128,6 +138,8 @@ func (c ReactorClient) Delete(ctx context.Context, obj runtime.Object, opts ...c
 	return nil
 }
 
+// Update updates the given obj in the Kubernetes cluster. obj must be a
+// struct pointer so that obj can be updated with the content returned by the Server.
 func (c ReactorClient) Update(ctx context.Context, obj runtime.Object, opts ...crclient.UpdateOption) error {
 	resource, err := getGVRFromObject(obj, scheme.Scheme)
 	if err != nil {
@@ -149,6 +161,8 @@ func (c ReactorClient) Update(ctx context.Context, obj runtime.Object, opts ...c
 	return nil
 }
 
+// Patch patches the given obj in the Kubernetes cluster. obj must be a
+// struct pointer so that obj can be updated with the content returned by the Server.
 func (c ReactorClient) Patch(ctx context.Context, obj runtime.Object, patch crclient.Patch, opts ...crclient.PatchOption) error {
 	resource, err := getGVRFromObject(obj, scheme.Scheme)
 	if err != nil {
@@ -176,10 +190,13 @@ func (c ReactorClient) Patch(ctx context.Context, obj runtime.Object, patch crcl
 	return nil
 }
 
+// DeleteAllOf deletes all objects of the given type matching the given options.
 func (c ReactorClient) DeleteAllOf(ctx context.Context, obj runtime.Object, opts ...crclient.DeleteAllOfOption) error {
-	return c.DeleteAllOf(ctx, obj, opts...)
+	return c.client.DeleteAllOf(ctx, obj, opts...)
 }
 
+// Status knows how to create a client which can update status subresource
+// for kubernetes objects.
 func (c ReactorClient) Status() crclient.StatusWriter {
 	return c.client.Status()
 }
